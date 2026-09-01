@@ -21,6 +21,17 @@ const integerColumns = new Set(['序號','總量','歐奈爾RS評分(1-99)','布
 const qs = selector => document.querySelector(selector);
 
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char])); }
+function formatUpdatedAt(value, fallbackDate) {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    return `<span class="update-date">資料日期 ${escapeHtml(fallbackDate)}</span><span class="update-time">尚無更新時間</span>`;
+  }
+  const parts = new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(parsed).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `<span class="update-date">資料日期 ${parts.year}-${parts.month}-${parts.day}</span><span class="update-time">${parts.hour}:${parts.minute}:${parts.second}</span>`;
+}
 function toRows(payload) { return payload.rows.map(values => Object.fromEntries(payload.columns.map((column, index) => [column, values[index]]))); }
 function number(value) { if (value === null || value === undefined || value === '') return null; const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; }
 function displayValue(column, value) { const numeric = number(value); if (numeric === null) return value ?? ''; if (integerColumns.has(column)) return numeric.toFixed(0); if (column === '實際量增倍數') return numeric.toFixed(1); return numeric.toFixed(2); }
@@ -58,7 +69,8 @@ async function loadDate() {
   const day = activeDay(); if (!day) return; state.daily.clear();
   await Promise.all(day.strategies.map(async strategy => { const response = await fetch(`data/${strategy.file}`, { cache: 'no-store' }); if (!response.ok) throw new Error(`無法讀取 ${strategy.label} 資料。`); state.daily.set(strategy.id, await response.json()); }));
   state.strategy = day.strategies.some(item => item.id === state.strategy) ? state.strategy : day.strategies[0]?.id;
-  const updates = [...state.daily.values()].map(item => item.updated_at).filter(Boolean).sort(); qs('#last-updated').textContent = updates.at(-1) || day.date;
+  const updates = [...state.daily.values()].map(item => item.updated_at).filter(Boolean).sort();
+  qs('#last-updated').innerHTML = formatUpdatedAt(updates.at(-1), day.date);
   renderMood(); renderStrategies(); refreshCandidates();
 }
 function renderMood() {
