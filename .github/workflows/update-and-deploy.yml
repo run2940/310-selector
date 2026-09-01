@@ -1,0 +1,68 @@
+name: Update and deploy 310 Selector
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "XQ/**"
+      - "scripts/**"
+      - ".github/workflows/update-and-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "310-selector-pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Import XQ CSV history
+        run: python scripts/import_xq_data.py
+
+      - name: Generate static website data
+        run: python scripts/export_history.py --source-db data/stock_selector.db
+
+      - name: Save generated history and website data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/stock_selector.db data/market_strength.csv site/data
+          git diff --cached --quiet || git commit -m "Update generated selector data"
+          git push
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload static website
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
