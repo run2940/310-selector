@@ -13,9 +13,8 @@ import hashlib
 import json
 import re
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +28,7 @@ STRATEGY_LABELS = {
     "天花板地板.csv": ("deviation-rebound", "乖離大反彈"),
     "處置股.csv": ("disposition", "處置股"),
 }
+TAIPEI_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Taipei")
 
 
 def strategy_details(source_file: str) -> tuple[str, str]:
@@ -146,7 +146,7 @@ def export_history(source_db: Path, output_dir: Path, days: int) -> tuple[int, i
 
             index_dates.append({"date": report_date, "strategies": strategies})
 
-    generated_at = datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
+    generated_at = datetime.now(TAIPEI_TIMEZONE).isoformat(timespec="seconds")
     market_strength_file = export_market_strength(source_db, output_dir)
     write_json(
         output_dir / "index.json",
