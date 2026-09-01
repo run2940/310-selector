@@ -5,9 +5,8 @@ from __future__ import annotations
 import csv
 import re
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +28,7 @@ NUMERIC_COLUMNS = {
     "近5日漲幅(%)", "近10日漲幅(%)", "近20日漲幅(%)", "月線斜率(%)",
     "5日籌碼集中度(%)", "10日籌碼集中度(%)", "20日籌碼集中度(%)", "來源順位",
 }
+TAIPEI_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Taipei")
 ALIASES = {
     "序號": ["序號", "編號"], "代碼": ["代碼", "商品代號", "證券代號"],
     "商品": ["商品", "名稱", "股票名稱"], "成交": ["成交", "收盤", "收盤價"],
@@ -109,7 +109,7 @@ def report_date(content: str, path: Path) -> str:
 
 
 def normalize(rows: list[dict[str, str]], source_file: str, date_value: str) -> list[dict[str, object]]:
-    imported_at = datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
+    imported_at = datetime.now(TAIPEI_TIMEZONE).isoformat(timespec="seconds")
     normalized = []
     for order, raw in enumerate(rows, start=1):
         lookup = {key(column): value for column, value in raw.items()}
