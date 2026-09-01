@@ -7,6 +7,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -108,7 +109,7 @@ def report_date(content: str, path: Path) -> str:
 
 
 def normalize(rows: list[dict[str, str]], source_file: str, date_value: str) -> list[dict[str, object]]:
-    imported_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    imported_at = datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
     normalized = []
     for order, raw in enumerate(rows, start=1):
         lookup = {key(column): value for column, value in raw.items()}
