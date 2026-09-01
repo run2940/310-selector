@@ -6,6 +6,7 @@ on:
     paths:
       - "XQ/**"
       - "scripts/**"
+      - "site/**"
       - ".github/workflows/update-and-deploy.yml"
   workflow_dispatch:
 
