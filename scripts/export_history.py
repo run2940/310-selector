@@ -15,6 +15,7 @@ import re
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -145,7 +146,7 @@ def export_history(source_db: Path, output_dir: Path, days: int) -> tuple[int, i
 
             index_dates.append({"date": report_date, "strategies": strategies})
 
-    generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    generated_at = datetime.now(ZoneInfo("Asia/Taipei")).isoformat(timespec="seconds")
     market_strength_file = export_market_strength(source_db, output_dir)
     write_json(
         output_dir / "index.json",
