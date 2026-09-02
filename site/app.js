@@ -59,14 +59,18 @@ async function loadIndex() {
   state.index = await response.json(); state.date = state.index.latest_date; populateDates(); await loadDate();
 }
 function populateDates() {
-  const input = qs('#date-select'); const availableDates = new Set(state.index.dates.map(item => item.date));
-  const orderedDates = [...availableDates].sort(); input.min = orderedDates[0]; input.max = orderedDates.at(-1); input.value = state.date;
+  const input = qs('#date-select'); const feedback = qs('#date-feedback');
+  const orderedDates = [...new Set(state.index.dates.map(item => item.date))].sort();
+  const availableDates = new Set(orderedDates);
+  input.min = orderedDates[0]; input.max = orderedDates.at(-1); input.value = state.date;
   input.addEventListener('change', async event => {
     const nextDate = event.target.value;
     if (!availableDates.has(nextDate)) {
-      input.setCustomValidity('這個日期沒有選股資料，請選擇有資料的交易日。'); input.reportValidity(); input.setCustomValidity(''); input.value = state.date;
+      feedback.textContent = `${nextDate || '所選日期'}無資料，請選擇其他日期。`;
+      feedback.classList.remove('is-hidden'); input.setAttribute('aria-invalid', 'true');
       return;
     }
+    feedback.textContent = ''; feedback.classList.add('is-hidden'); input.removeAttribute('aria-invalid');
     state.date = nextDate; state.search = ''; qs('#stock-search').value = ''; await loadDate();
   });
 }

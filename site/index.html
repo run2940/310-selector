@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#125b83">
     <title>310 選股</title>
-    <link rel="stylesheet" href="styles.css?v=20260902-5">
+    <link rel="stylesheet" href="styles.css?v=20260902-6">
   </head>
   <body>
     <header class="site-header">
@@ -35,7 +35,8 @@
         <section class="control-panel">
           <div class="control-item">
             <label for="date-select">資料日期</label>
-            <input id="date-select" type="date" required>
+            <input id="date-select" type="date" required aria-describedby="date-feedback">
+            <small id="date-feedback" class="date-feedback is-hidden" role="status"></small>
           </div>
           <div class="control-item search-item">
             <label for="stock-search">搜尋股票</label>
@@ -102,6 +103,6 @@
         </section>
       </section>
     </main>
-    <script src="app.js?v=20260902-3"></script>
+    <script src="app.js?v=20260902-5"></script>
   </body>
 </html>
