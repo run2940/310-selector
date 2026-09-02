@@ -68,11 +68,21 @@ function populateDates() {
     if (!availableDates.has(nextDate)) {
       feedback.textContent = `${nextDate || '所選日期'}無資料，請選擇其他日期。`;
       feedback.classList.remove('is-hidden'); input.setAttribute('aria-invalid', 'true');
+      renderUnavailableDate(nextDate);
       return;
     }
     feedback.textContent = ''; feedback.classList.add('is-hidden'); input.removeAttribute('aria-invalid');
     state.date = nextDate; state.search = ''; qs('#stock-search').value = ''; await loadDate();
   });
+}
+function renderUnavailableDate(date) {
+  state.date = date; state.strategy = null; state.search = ''; state.daily.clear();
+  qs('#stock-search').value = ''; qs('#market-mood-section').classList.remove('is-hidden');
+  qs('#last-updated').innerHTML = `<span class="update-date">資料日期 ${escapeHtml(date)}</span><span class="update-time">無資料</span>`;
+  qs('#market-mood').innerHTML = '<p class="empty">所選日期無市場氣氛趨勢資料。</p>';
+  qs('#strategy-tabs').innerHTML = '';
+  qs('#strategy-content').innerHTML = '<p class="empty">所選日期無選股清單資料。</p>';
+  refreshCandidates();
 }
 async function loadDate() {
   const day = activeDay(); if (!day) return; state.daily.clear();
