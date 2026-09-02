@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#125b83">
     <title>310 選股</title>
-    <link rel="stylesheet" href="styles.css?v=20260901-2">
+    <link rel="stylesheet" href="styles.css?v=20260902-5">
   </head>
   <body>
     <header class="site-header">
@@ -13,6 +13,7 @@
       <nav aria-label="主要功能">
         <button class="nav-button is-active" data-page="stock">盤面選股</button>
         <button class="nav-button" data-page="trailing">移動停利</button>
+        <button class="nav-button" data-page="related">相關網站</button>
       </nav>
     </header>
 
@@ -58,6 +59,7 @@
           <div id="strategy-tabs" class="strategy-tabs" role="tablist"></div>
           <div id="strategy-content"></div>
         </section>
+
       </section>
 
       <section id="trailing-page" class="page">
@@ -76,7 +78,8 @@
             <input id="retracement-number" type="number" min="0" max="100" step="1" value="20">
             <input id="retracement-range" type="range" min="0" max="100" step="1" value="20">
           </div>
-          <p id="trailing-message" class="calculator-message">輸入買入股價與目前最高點後，即會顯示建議停利點位。</p>
+          <button id="calculate-trailing" class="calculate-button" type="button">執行計算</button>
+          <p id="trailing-message" class="calculator-message">輸入買入股價與目前最高點後，按下「執行計算」。</p>
           <div id="trailing-results" class="is-hidden">
             <div class="stop-result"><span>建議停利點位</span><strong id="stop-price">0.00</strong><small>當股價跌破此價位時，可依你的交易規則評估出場。</small></div>
             <div class="result-grid">
@@ -87,7 +90,18 @@
           </div>
         </section>
       </section>
+
+      <section id="related-page" class="page">
+        <section class="related-sites" aria-labelledby="related-sites-title">
+          <h1 id="related-sites-title">相關網站</h1>
+          <p>前往其他實用的投資查詢工具。</p>
+          <div class="related-site-links">
+            <a href="https://xiaoyu-etf.pages.dev/" target="_blank" rel="noopener noreferrer">小宇主動式 ETF 查詢</a>
+            <a href="https://chengwaye.com/" target="_blank" rel="noopener noreferrer">超底王處置＋主動 ETF 查詢</a>
+          </div>
+        </section>
+      </section>
     </main>
-    <script src="app.js?v=20260901-3"></script>
+    <script src="app.js?v=20260902-3"></script>
   </body>
 </html>
