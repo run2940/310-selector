@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#125b83">
     <title>310 選股</title>
-    <link rel="stylesheet" href="styles.css?v=20260902-6">
+    <link rel="stylesheet" href="styles.css?v=20260930-1">
   </head>
   <body>
     <header class="site-header">
@@ -57,6 +57,8 @@
         <section class="section-block">
           <div class="section-heading"><span>310_選股</span></div>
           <p class="legend"><b>◆ 金黃色</b>：同日入選 RS加權與主力買向上，且 RS評分大於 85。</p>
+          <p class="legend"><span class="futures-badge">期</span>：目前有股票期貨（依期交所最新標的名單）。</p>
+          <p id="futures-status" class="futures-status" aria-live="polite"></p>
           <div id="strategy-tabs" class="strategy-tabs" role="tablist"></div>
           <div id="strategy-content"></div>
         </section>
@@ -102,6 +104,6 @@
         </section>
       </section>
     </main>
-    <script src="app.js?v=20260907-2"></script>
+    <script src="app.js?v=20260930-1"></script>
   </body>
 </html>

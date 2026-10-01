@@ -36,3 +36,5 @@
 3. 部署 `site` 資料夾到 GitHub Pages。
 
 首次建立 GitHub repository 時，請一併上傳 `data/stock_selector.db`，這樣網頁版會保留目前已補入的歷史資料。
+
+此外，GitHub Actions 每天台灣時間 08:15 會單獨核對期交所股票期貨標的，即使沒有上傳 XQ CSV 也會執行。定時執行只更新 `site/data/stock_futures.json` 並重新部署網站，不會匯入 CSV 或改寫選股歷史。網頁上的股票期貨名單核對時間與選股資料日期分開顯示；核對失敗時保留上次成功名單並顯示警示。GitHub 的排程可能延遲，不保證準點。
