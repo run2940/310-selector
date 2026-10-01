@@ -246,7 +246,11 @@ function renderGroups(strategyId, label, overlaps) {
     ? strongestGroups.filter(item => item.list.some(row => matchRow(row, state.search)))
     : strongestGroups;
   const showRsMetrics = strategyId === 'rs-weighted';
-  const body = items.map(item => `<tr><td>${escapeHtml(item.name)}</td><td>${item.list.length}</td><td>${item.list.map(row => `<span class="${overlaps.has(String(row['代碼'])) ? 'overlap' : ''}">${overlaps.has(String(row['代碼'])) ? '◆ ' : ''}${escapeHtml(row['代碼'])} ${escapeHtml(row['商品'])}</span>${futuresBadge(row['代碼'])}`).join('、')}</td>${showRsMetrics ? `<td>${item.avgRs?.toFixed(1) ?? ''}</td><td>${item.rs90}</td>` : ''}<td>${item.avgChange?.toFixed(2) ?? ''}</td></tr>`).join('');
+  const body = items.map(item => {
+    const rowClass = item.avgChange > 0 ? 'group-positive' : '';
+    const changeClass = item.avgChange > 0 ? 'group-change-positive' : item.avgChange < 0 ? 'group-change-negative' : '';
+    return `<tr class="${rowClass}"><td>${escapeHtml(item.name)}</td><td>${item.list.length}</td><td>${item.list.map(row => `<span class="${overlaps.has(String(row['代碼'])) ? 'overlap' : ''}">${overlaps.has(String(row['代碼'])) ? '◆ ' : ''}${escapeHtml(row['代碼'])} ${escapeHtml(row['商品'])}</span>${futuresBadge(row['代碼'])}`).join('、')}</td>${showRsMetrics ? `<td>${item.avgRs?.toFixed(1) ?? ''}</td><td>${item.rs90}</td>` : ''}<td class="${changeClass}">${item.avgChange?.toFixed(2) ?? ''}</td></tr>`;
+  }).join('');
   const metricHeaders = showRsMetrics ? '<th>平均 RS</th><th>RS 90以上</th>' : '';
   const columnCount = showRsMetrics ? 6 : 4;
   return `<div class="group-wrap"><div class="section-heading"><span>${escapeHtml(label)}｜${state.date} 強勢族群</span></div><div class="table-shell"><table class="group-table"><thead><tr><th>族群</th><th>股票數</th><th>股票清單</th>${metricHeaders}<th>平均漲幅%</th></tr></thead><tbody>${body || `<tr><td colspan="${columnCount}">此股票不在今日強勢族群名單。</td></tr>`}</tbody></table></div></div>`;
