@@ -8,6 +8,9 @@ on:
       - "scripts/**"
       - "site/**"
       - ".github/workflows/update-and-deploy.yml"
+  schedule:
+    - cron: "15 8 * * *"
+      timezone: "Asia/Taipei"
   workflow_dispatch:
 
 permissions:
@@ -22,35 +25,38 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-
       - name: Import XQ CSV history
+        if: github.event_name != 'schedule'
         run: python scripts/import_xq_data.py
-
       - name: Generate static website data
+        if: github.event_name != 'schedule'
         run: python scripts/export_history.py --source-db data/stock_selector.db
-
+      - name: Refresh stock futures underlyings
+        run: python scripts/update_stock_futures.py
       - name: Save generated history and website data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/stock_selector.db data/market_strength.csv site/data
-          git diff --cached --quiet || git commit -m "Update generated selector data"
-          git push
-
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            git add data/stock_selector.db data/market_strength.csv site/data
+          else
+            git add site/data/stock_futures.json
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "Update generated selector data"
+            git push
+          fi
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-
       - name: Upload static website
         uses: actions/upload-pages-artifact@v4
         with:
@@ -62,7 +68,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
