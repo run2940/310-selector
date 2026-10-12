@@ -13,6 +13,7 @@
       <nav aria-label="主要功能">
         <button class="nav-button is-active" data-page="stock">盤面選股</button>
         <button class="nav-button" data-page="trailing">移動停利</button>
+        <button class="nav-button" data-page="warrant">權證計算機</button>
         <button class="nav-button" data-page="related">相關網站</button>
       </nav>
     </header>
@@ -93,6 +94,18 @@
         </section>
       </section>
 
+      <section id="warrant-page" class="page">
+        <section class="related-sites" aria-labelledby="warrant-title">
+          <h1 id="warrant-title">權證計算機</h1>
+          <p>查看現股與權證五檔報價，調整預測現股價格、隱含波動率與剩餘天數。</p>
+          <p>計算機會在新的瀏覽器分頁開啟，方便與選股清單來回切換。</p>
+          <p id="warrant-status" role="status">正在確認計算機連結…</p>
+          <div class="related-site-links">
+            <a id="warrant-launch" class="is-hidden" target="_blank" rel="noopener noreferrer">開啟權證計算機 ↗</a>
+          </div>
+        </section>
+      </section>
+
       <section id="related-page" class="page">
         <section class="related-sites" aria-labelledby="related-sites-title">
           <h1 id="related-sites-title">相關網站</h1>
@@ -105,5 +118,6 @@
       </section>
     </main>
     <script src="app.js?v=20260930-1"></script>
+    <script src="warrant-link.js?v=20261012-1"></script>
   </body>
 </html>
