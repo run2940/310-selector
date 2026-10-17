@@ -34,34 +34,60 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - name: Import XQ CSV history
-        if: github.event_name != 'schedule'
-        run: python scripts/import_xq_data.py
-      - name: Generate static website data
-        if: github.event_name != 'schedule'
-        run: python scripts/export_history.py --source-db data/stock_selector.db
-      - name: Refresh stock futures underlyings
-        run: python scripts/update_stock_futures.py
-      - name: Save generated history and website data
+      - name: Generate and publish data from latest branch
+        id: publish
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ "${{ github.event_name }}" != "schedule" ]; then
-            git add data/history data/market_strength.csv site/data
-            git add -u -- data site/data
-          else
-            git add site/data/stock_futures.json
-          fi
-          if ! git diff --cached --quiet; then
-            git commit -m "Update generated selector data"
-            git push
-          fi
+          for attempt in 1 2 3; do
+            git fetch --no-tags origin "$TARGET_BRANCH"
+            base="$(git rev-parse FETCH_HEAD)"
+            worktree="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/stock-update.XXXXXX")"
+            git worktree add --detach "$worktree" "$base"
+            (
+              cd "$worktree"
+              if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
+                python scripts/import_xq_data.py
+                python scripts/export_history.py --source-db data/stock_selector.db
+              fi
+              python scripts/update_stock_futures.py
+              if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
+                targets=(data/history data/stock_selector.db data/market_strength.csv site/data)
+              else
+                targets=(site/data/stock_futures.json)
+              fi
+              for target in "${targets[@]}"; do
+                if [ -e "$target" ] || git ls-files --error-unmatch -- "$target" >/dev/null 2>&1; then
+                  git add -A -- "$target"
+                fi
+              done
+              if ! git diff --cached --quiet; then
+                git commit -m "Update generated selector data"
+              fi
+            )
+            if git -C "$worktree" push origin "HEAD:refs/heads/$TARGET_BRANCH"; then
+              printf 'site_path=%s/site\n' "$worktree" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git fetch --no-tags origin "$TARGET_BRANCH"
+            if [ "$(git rev-parse FETCH_HEAD)" = "$base" ]; then
+              echo "::error::Push failed without a newer remote commit. Check repository write permissions and logs."
+              exit 1
+            fi
+            echo "Remote branch changed during generation; retrying from latest data ($attempt/3)."
+          done
+          echo "::error::Repository kept changing. Please run the workflow again after uploads finish."
+          exit 1
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload static website
         uses: actions/upload-pages-artifact@v4
         with:
-          path: site
+          path: ${{ steps.publish.outputs.site_path }}
 
   deploy:
     needs: build
