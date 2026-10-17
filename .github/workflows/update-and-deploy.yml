@@ -47,7 +47,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ "${{ github.event_name }}" != "schedule" ]; then
-            git add data/stock_selector.db data/market_strength.csv site/data
+            git add data/history data/market_strength.csv site/data
+            git add -u -- data site/data
           else
             git add site/data/stock_futures.json
           fi
