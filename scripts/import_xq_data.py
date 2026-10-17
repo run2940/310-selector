@@ -5,8 +5,14 @@ from __future__ import annotations
 import csv
 import re
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from monthly_history import (
+    check_sizes, database_paths, history_dir, migrate_legacy, prune_history,
+    read_connection, write_group,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -148,23 +154,26 @@ def ensure_columns(connection: sqlite3.Connection, rows: list[dict[str, object]]
     return columns
 
 
-def rebuild_strength_history(connection: sqlite3.Connection) -> None:
-    rows = connection.execute(f"SELECT * FROM {TABLE_NAME} ORDER BY \"資料日期\"").fetchall()
-    columns = [item[1] for item in connection.execute(f"PRAGMA table_info({TABLE_NAME})")]
-    records = [dict(zip(columns, row)) for row in rows]
-    dates = sorted({str(record.get("資料日期")) for record in records if record.get("資料日期")})
-    output = []
-    for date_value in dates:
-        rs_records = [record for record in records if record.get("資料日期") == date_value and record.get("來源檔案") == "RS加權.csv"]
-        main_records = [record for record in records if record.get("資料日期") == date_value and record.get("來源檔案") == "主力買向上.csv"]
-        scores = [number_or_none(record.get("歐奈爾RS評分(1-99)")) for record in rs_records]
-        scores = [score for score in scores if score is not None]
-        output.append({"策略": "RS加權", "日期": date_value, "RS 80以上": sum(score >= 80 for score in scores), "RS 85以上": sum(score >= 85 for score in scores), "RS 90以上": sum(score >= 90 for score in scores), "RS 95以上": sum(score >= 95 for score in scores), "主力買向上家數": len(main_records) if main_records else ""})
+def rebuild_strength_history(source_path: Path = DB_PATH) -> None:
+    by_date = {}
+    for filename in database_paths(source_path):
+        with closing(read_connection(filename)) as connection:
+            for date_value, source, score in connection.execute(
+                f'SELECT "資料日期", "來源檔案", "歐奈爾RS評分(1-99)" FROM {TABLE_NAME}'):
+                item = by_date.setdefault(date_value, {"策略": "RS加權", "日期": date_value,
+                    "RS 80以上": 0, "RS 85以上": 0, "RS 90以上": 0, "RS 95以上": 0, "主力買向上家數": ""})
+                if source == "RS加權.csv":
+                    numeric = number_or_none(score)
+                    if numeric is not None:
+                        for threshold in (80, 85, 90, 95):
+                            item[f"RS {threshold}以上"] += int(numeric >= threshold)
+                elif source == "主力買向上.csv":
+                    item["主力買向上家數"] = (item["主力買向上家數"] or 0) + 1
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with STRENGTH_PATH.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["策略", "日期", "RS 80以上", "RS 85以上", "RS 90以上", "RS 95以上", "主力買向上家數"])
         writer.writeheader()
-        writer.writerows(output)
+        writer.writerows(by_date[day] for day in sorted(by_date))
 
 
 def main() -> None:
@@ -172,31 +181,27 @@ def main() -> None:
     files = sorted(XQ_DIR.glob("*.csv"), key=lambda item: item.name.lower())
     if not files:
         raise SystemExit(f"找不到 CSV。請將 XQ 選股檔放入：{XQ_DIR}")
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    imported: list[tuple[str, str, int]] = []
-    with sqlite3.connect(DB_PATH) as connection:
-        for path in files:
-            content, raw_rows = read_csv(path)
-            date_value = report_date(content, path)
-            rows = normalize(raw_rows, path.name, date_value)
-            if not rows:
-                print(f"略過 {path.name}：沒有可匯入的股票資料")
-                continue
-            columns = ensure_columns(connection, rows)
-            connection.execute(f"DELETE FROM {TABLE_NAME} WHERE \"資料日期\" = ? AND \"來源檔案\" = ?", (date_value, path.name))
-            placeholders = ", ".join("?" for _ in columns)
-            sql = f"INSERT INTO {TABLE_NAME} ({', '.join(quote(column) for column in columns)}) VALUES ({placeholders})"
-            connection.executemany(sql, [[row.get(column) for column in columns] for row in rows])
-            imported.append((path.name, date_value, len(rows)))
-        latest = connection.execute(f"SELECT MAX(\"資料日期\") FROM {TABLE_NAME}").fetchone()[0]
-        if latest:
-            cutoff = (datetime.fromisoformat(latest) - timedelta(days=365)).strftime("%Y-%m-%d")
-            connection.execute(f"DELETE FROM {TABLE_NAME} WHERE \"資料日期\" < ?", (cutoff,))
-        rebuild_strength_history(connection)
-        connection.commit()
+    migration = migrate_legacy(DB_PATH)
+    if migration["migrated"]:
+        print(f"已完成每月歸檔，原始資料庫備份：{migration['backup']}")
+    imported = []
+    for path in files:
+        content, raw_rows = read_csv(path)
+        date_value = report_date(content, path)
+        rows = normalize(raw_rows, path.name, date_value)
+        if not rows:
+            print(f"略過 {path.name}：沒有可匯入的股票資料")
+            continue
+        types = {column: ("REAL" if column in NUMERIC_COLUMNS else "TEXT")
+                 for row in rows for column in row}
+        write_group(DB_PATH, date_value, path.name, rows, types)
+        imported.append((path.name, date_value, len(rows)))
     if not imported:
         raise SystemExit("沒有匯入任何資料，請確認 CSV 格式與前三行 XQ 標頭。")
-    print(f"已更新新專案資料庫：{DB_PATH}")
+    prune_history(DB_PATH)
+    rebuild_strength_history(DB_PATH)
+    check_sizes(DB_PATH)
+    print(f"已更新每月歷史資料庫：{history_dir(DB_PATH)}")
     for source_file, date_value, count in imported:
         print(f"  {source_file}｜{date_value}｜{count} 筆")
 

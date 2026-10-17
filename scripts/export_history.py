@@ -13,8 +13,11 @@ import hashlib
 import json
 import re
 import sqlite3
+from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+from monthly_history import cutoff_date, database_paths, history_dir, latest_date, quote, read_connection
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -44,15 +47,14 @@ def strategy_details(source_file: str) -> tuple[str, str]:
 
 def write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
-        encoding="utf-8",
-    )
+    content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    if not path.exists() or path.read_text(encoding="utf-8") != content:
+        path.write_text(content, encoding="utf-8")
 
 
 def export_market_strength(source_db: Path, output_dir: Path) -> str | None:
     """Export the small market-atmosphere history when it is available."""
-    source_path = source_db.parent / "market_strength.csv"
+    source_path = history_dir(source_db).parent / "market_strength.csv"
     if not source_path.exists():
         return None
 
@@ -69,96 +71,69 @@ def export_market_strength(source_db: Path, output_dir: Path) -> str | None:
     return relative_path
 
 
-def export_history(source_db: Path, output_dir: Path, days: int) -> tuple[int, int]:
-    if not source_db.exists():
-        raise FileNotFoundError(f"找不到來源 SQLite：{source_db}")
-
-    with sqlite3.connect(source_db) as connection:
-        connection.row_factory = sqlite3.Row
-        table_exists = connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (TABLE_NAME,)
-        ).fetchone()
-        if table_exists is None:
-            raise RuntimeError(f"SQLite 找不到資料表：{TABLE_NAME}")
-
-        latest_date = connection.execute(
-            f'SELECT MAX("資料日期") FROM "{TABLE_NAME}"'
-        ).fetchone()[0]
-        if not latest_date:
-            raise RuntimeError("SQLite 尚未有可匯出的歷史資料。")
-
-        start_date = (date.fromisoformat(latest_date) - timedelta(days=days - 1)).isoformat()
-        dates = [
-            row[0]
-            for row in connection.execute(
-                f'''SELECT DISTINCT "資料日期" FROM "{TABLE_NAME}"
-                    WHERE "資料日期" >= ? ORDER BY "資料日期" DESC''',
-                (start_date,),
-            )
-        ]
-        columns = [
-            row[1]
-            for row in connection.execute(f'PRAGMA table_info("{TABLE_NAME}")')
-            if row[1] not in METADATA_COLUMNS
-        ]
-
-        snapshot_root = output_dir / "snapshots"
-        index_dates = []
-        file_count = 0
-
-        for report_date in dates:
-            records = connection.execute(
-                f'''SELECT * FROM "{TABLE_NAME}"
-                    WHERE "資料日期" = ?
-                    ORDER BY "來源檔案", "來源順位", "序號"''',
-                (report_date,),
-            ).fetchall()
-            grouped: dict[str, list[sqlite3.Row]] = {}
-            for record in records:
-                grouped.setdefault(record["來源檔案"], []).append(record)
-
-            strategies = []
-            for source_file, strategy_records in grouped.items():
-                slug, label = strategy_details(source_file)
-                updated_at = max(
-                    (record["匯入時間"] for record in strategy_records if record["匯入時間"]),
-                    default=None,
-                )
-                payload = {
-                    "schema": 1,
-                    "date": report_date,
-                    "strategy": {"id": slug, "label": label, "source": source_file},
-                    "updated_at": updated_at,
-                    "columns": columns,
-                    "rows": [[record[column] for column in columns] for record in strategy_records],
-                }
-                relative_path = Path("snapshots") / report_date / f"{slug}.json"
-                write_json(output_dir / relative_path, payload)
-                strategies.append(
-                    {
-                        "id": slug,
-                        "label": label,
-                        "rows": len(strategy_records),
-                        "file": relative_path.as_posix(),
+def export_history(source_db: Path, output_dir: Path, days: int | None = None) -> tuple[int, int]:
+    paths = database_paths(source_db)
+    if not paths:
+        raise FileNotFoundError(f"找不到歷史資料：{source_db}")
+    latest = latest_date(source_db)
+    if not latest:
+        raise RuntimeError("尚未有可匯出的歷史資料。")
+    start_date = ((date.fromisoformat(latest) - timedelta(days=days - 1)).isoformat()
+                  if days is not None else cutoff_date(latest))
+    columns = []
+    for filename in paths:
+        with closing(read_connection(filename)) as conn:
+            for row in conn.execute(f'PRAGMA table_info("{TABLE_NAME}")'):
+                if row[1] not in METADATA_COLUMNS and row[1] not in columns:
+                    columns.append(row[1])
+    index_dates = []
+    file_count = 0
+    for filename in paths:
+        with closing(read_connection(filename)) as connection:
+            connection.row_factory = sqlite3.Row
+            dates = [row[0] for row in connection.execute(
+                f'SELECT DISTINCT "資料日期" FROM {TABLE_NAME} WHERE "資料日期" >= ? ORDER BY "資料日期" DESC',
+                (start_date,))]
+            available = {row[1] for row in connection.execute(f'PRAGMA table_info("{TABLE_NAME}")')}
+            ordering = ', '.join(quote(column) for column in ("來源檔案", "來源順位", "序號") if column in available)
+            for report_date in dates:
+                records = connection.execute(
+                    f'SELECT * FROM {TABLE_NAME} WHERE "資料日期" = ? ORDER BY {ordering}',
+                    (report_date,)).fetchall()
+                grouped = {}
+                for record in records:
+                    grouped.setdefault(record["來源檔案"], []).append(dict(record))
+                strategies = []
+                for source_file, strategy_records in grouped.items():
+                    slug, label = strategy_details(source_file)
+                    updated_at = max((record.get("匯入時間") for record in strategy_records
+                                      if record.get("匯入時間")), default=None)
+                    payload = {
+                        "schema": 1, "date": report_date,
+                        "strategy": {"id": slug, "label": label, "source": source_file},
+                        "updated_at": updated_at, "columns": columns,
+                        "rows": [[record.get(column) for column in columns] for record in strategy_records],
                     }
-                )
-                file_count += 1
-
-            index_dates.append({"date": report_date, "strategies": strategies})
-
-    generated_at = datetime.now(TAIPEI_TIMEZONE).isoformat(timespec="seconds")
-    market_strength_file = export_market_strength(source_db, output_dir)
-    write_json(
-        output_dir / "index.json",
-        {
-            "schema": 1,
-            "generated_at": generated_at,
-            "history_days": days,
-            "latest_date": latest_date,
-            "dates": index_dates,
-            "market_strength_file": market_strength_file,
-        },
-    )
+                    relative_path = Path("snapshots") / report_date / f"{slug}.json"
+                    write_json(output_dir / relative_path, payload)
+                    strategies.append({"id": slug, "label": label, "rows": len(strategy_records),
+                                       "file": relative_path.as_posix()})
+                    file_count += 1
+                index_dates.append({"date": report_date, "strategies": strategies})
+    index_dates.sort(key=lambda item: item["date"], reverse=True)
+    snapshot_root = output_dir / "snapshots"
+    for folder in snapshot_root.iterdir() if snapshot_root.exists() else []:
+        if folder.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", folder.name) and folder.name < start_date:
+            for filename in folder.glob("*.json"):
+                filename.unlink()
+            if not any(folder.iterdir()):
+                folder.rmdir()
+    write_json(output_dir / "index.json", {
+        "schema": 1, "generated_at": datetime.now(TAIPEI_TIMEZONE).isoformat(timespec="seconds"),
+        "history_days": days, "history_years": 5 if days is None else None,
+        "latest_date": latest, "dates": index_dates,
+        "market_strength_file": export_market_strength(source_db, output_dir),
+    })
     return len(index_dates), file_count
 
 
@@ -166,10 +141,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="將舊 SQLite 歷史資料轉為日期分檔 JSON。")
     parser.add_argument("--source-db", type=Path, default=DEFAULT_SOURCE_DB)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--days", type=int, default=365)
+    parser.add_argument("--days", type=int, default=None, help="選填；預設保留最近五個日曆年")
     args = parser.parse_args()
 
-    if args.days < 1:
+    if args.days is not None and args.days < 1:
         parser.error("--days 必須大於或等於 1")
 
     date_count, file_count = export_history(args.source_db, args.output_dir, args.days)
