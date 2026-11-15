@@ -228,7 +228,7 @@ function renderStrategyContent() {
   const body = rows.map(row => `<tr>${columns.map(column => { const raw = row[column]; const isOverlap = overlaps.has(String(row['代碼'])); if (column === tradingViewColumn) { const code = encodeURIComponent(String(row['代碼'] ?? '')); const market = tradingViewMarket(row); return `<td><a class="trading-view-link" target="_blank" rel="noopener" href="https://tw.tradingview.com/chart/?symbol=${market}%3A${code}" aria-label="在 TradingView 開啟 ${escapeHtml(row['代碼'])} ${escapeHtml(row['商品'])} 線圖">開啟線圖</a></td>`; } if (column === '商品') { const code = escapeHtml(row['代碼']); return `<td><a class="${isOverlap ? 'overlap' : ''}" target="_blank" rel="noopener" href="https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco_${code}.djhtm">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</a>${futuresBadge(row['代碼'])}</td>`; } if (column === '代碼') return `<td class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</td>`; const numeric = column === '成交' ? number(row['漲幅%']) : number(raw); const className = (concentration.has(column) || column === '漲幅%' || column === '成交') && numeric !== null ? (numeric > 0 ? 'positive' : numeric < 0 ? 'negative' : '') : ''; return `<td class="${className}">${escapeHtml(displayValue(column, raw))}</td>`; }).join('')}</tr>`).join('');
   root.innerHTML = `${note}<div class="section-heading list-heading"><span>${escapeHtml(strategy.label)} 選股清單</span></div><div class="table-shell selection-table"><table class="stock-table"><thead><tr>${header}</tr></thead><tbody>${body || `<tr><td colspan="${columns.length}">沒有符合搜尋條件的股票。</td></tr>`}</tbody></table></div>${['rs-weighted','main-buy-up'].includes(strategy.id) ? renderGroups(strategy.id, strategy.label, overlaps) : ''}`;
   if (isIndustry) {
-    root.insertAdjacentHTML('afterbegin', renderIndustryStrength(toRows(payload)));
+    root.insertAdjacentHTML('afterbegin', renderIndustryStrength(toRows(payload), overlaps));
     root.querySelectorAll('[data-industry]').forEach(button => button.addEventListener('click', () => {
       state.industry = button.dataset.industry;
       renderStrategyContent();
@@ -240,7 +240,7 @@ function renderStrategyContent() {
 function industryName(row) {
   return String(row['細產業'] ?? '').trim() || String(row['產業'] ?? '').trim() || '未分類';
 }
-function renderIndustryStrength(rows) {
+function renderIndustryStrength(rows, overlaps) {
   const groups = new Map();
   const seen = new Set();
   for (const row of rows) {
@@ -262,11 +262,17 @@ function renderIndustryStrength(rows) {
   const top = ranked.filter(group => group.strong).slice(0, 3);
   const control = (name, label, css = '') => `<button type="button" class="strategy-tab ${css} ${(state.industry || '') === name ? 'is-active' : ''}" aria-pressed="${(state.industry || '') === name}" data-industry="${escapeHtml(name)}">${label}</button>`;
   const percent = value => value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+  const stockNames = (stocks, includeCode = false) => stocks.map(row => {
+    const code = row['代碼'];
+    const isOverlap = overlaps.has(String(code));
+    const label = includeCode ? `${code} ${row['商品']}` : row['商品'];
+    return `<span style="white-space:nowrap"><span class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(label)}</span>${futuresBadge(code)}</span>`;
+  }).join('、<wbr>');
   const cards = top.map(group => control(group.name,
-    `<strong>${escapeHtml(group.name)}</strong><br>${group.stocks.length} 檔入選 · 上漲 ${group.rising}/${group.stocks.length}<br>${percent(group.average)}`)).join('');
+    `<strong>${escapeHtml(group.name)}</strong><br>${group.stocks.length} 檔入選 · 上漲 ${group.rising}/${group.stocks.length}<br>${percent(group.average)}<br><span style="white-space:normal">${stockNames(group.stocks)}</span>`)).join('');
   const body = ranked.map(group => {
     const color = group.average > 0 ? 'group-change-positive' : group.average < 0 ? 'group-change-negative' : '';
-    const names = group.stocks.map(row => escapeHtml(`${row['代碼']} ${row['商品']}`)).join('、');
+    const names = stockNames(group.stocks, true);
     return `<tr class="${group.average > 0 ? 'group-positive' : ''}"><td>${control(group.name, escapeHtml(group.name), 'industry-filter')}</td><td>${group.stocks.length}</td><td>${group.rising}</td><td class="${color}">${percent(group.average)}</td><td>${group.strong ? '群體走強' : group.stocks.length < 3 ? '樣本較少' : '—'}</td><td>${names}</td></tr>`;
   }).join('');
   return `<div class="section-heading"><span>產業強勢股｜強勢族群</span></div>
