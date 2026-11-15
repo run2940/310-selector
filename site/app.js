@@ -1,4 +1,4 @@
-const state = { index: null, daily: new Map(), futures: new Set(), date: null, strategy: null, search: '', sort: null };
+const state = { index: null, daily: new Map(), futures: new Set(), date: null, strategy: null, search: '', sort: null, industry: '' };
 const labels = {
   '序號':'序號','代碼':'代碼','商品':'商品','成交':'成交','漲幅%':'漲幅%','總量':'總量',
   '歐奈爾RS評分(1-99)':'RS評分','5日籌碼集中度(%)':'主5','10日籌碼集中度(%)':'主10','20日籌碼集中度(%)':'主20',
@@ -109,6 +109,7 @@ function renderUnavailableDate(date) {
   refreshCandidates();
 }
 async function loadDate() {
+  state.industry = '';
   const day = activeDay(); if (!day) return; state.daily.clear();
   await Promise.all(day.strategies.map(async strategy => { const response = await fetch(`data/${strategy.file}`, { cache: 'no-store' }); if (!response.ok) throw new Error(`無法讀取 ${strategy.label} 資料。`); state.daily.set(strategy.id, await response.json()); }));
   state.strategy = day.strategies.some(item => item.id === state.strategy) ? state.strategy : day.strategies[0]?.id;
@@ -207,19 +208,72 @@ function renderStrategies() {
 function sortRows(rows, strategyId) {
   const slopeColumn = ['月線斜率(%)', '月線斜率%'].find(column => rows.some(row => column in row));
   const defaultSort = strategyId === 'rs-weighted' ? ['歐奈爾RS評分(1-99)', -1] : strategyId === 'main-buy-up' && slopeColumn ? [slopeColumn, -1] : strategyId === 'deviation-rebound' ? ['20日乖離率(%)', 1] : null;
-  const [column, direction] = state.sort || defaultSort || [];
+  const industrySort = strategyId === 'industry-strength' ? ['漲幅%', -1] : null;
+  const [column, direction] = state.sort || industrySort || defaultSort || [];
   if (!column) return [...rows];
   return [...rows].sort((a,b) => { const av = number(a[column]); const bv = number(b[column]); if (av === null && bv === null) return 0; if (av === null) return 1; if (bv === null) return -1; return (av - bv) * direction; });
 }
 function renderStrategyContent() {
   qs('#market-mood-section').classList.toggle('is-hidden', Boolean(state.search));
   const root = qs('#strategy-content'); const payload = payloadFor(state.strategy); if (!payload) { root.innerHTML = '<p class="empty">此策略沒有資料。</p>'; return; }
-  const strategy = payload.strategy; let rows = toRows(payload).filter(row => matchRow(row, state.search)); rows = sortRows(rows, strategy.id); const columns = visibleColumns(payload, rows); const overlaps = overlapCodes();
+  const strategy = payload.strategy;
+  const isIndustry = strategy.id === 'industry-strength';
+  let rows = toRows(payload).filter(row => matchRow(row, state.search));
+  if (isIndustry && state.industry) rows = rows.filter(row => industryName(row) === state.industry);
+  rows = sortRows(rows, strategy.id);
+  const columns = visibleColumns(payload, isIndustry ? toRows(payload) : rows);
+  const overlaps = overlapCodes();
   const note = strategy.id === 'deviation-rebound' ? '<details class="strategy-note"><summary>搶反彈經驗</summary><ol><li>按照負乖離排序。</li><li>將資金分成 10 等份。</li><li>當天晚上出現小於地板或接近地板個股時，列入自選。</li><li>第二天殺低爆量時搶反彈，買黑不買紅。</li><li>第三天開高上漲無力時獲利了結。</li><li>若第三天殺低爆量，第二份資金再搶一次。</li></ol></details>' : strategy.id === 'disposition' ? '<p class="strategy-note">月線斜率大於 1、布林位階小於 4，搭配距高點回檔幅度與盤勢經驗，尋找做多機會。</p>' : '';
   const header = columns.map(column => column === tradingViewColumn ? `<th>${tradingViewColumn}</th>` : `<th><button data-sort="${escapeHtml(column)}">${escapeHtml(labels[column] || column)}${state.sort?.[0] === column ? (state.sort[1] === 1 ? ' ↑' : ' ↓') : ''}</button></th>`).join('');
   const body = rows.map(row => `<tr>${columns.map(column => { const raw = row[column]; const isOverlap = overlaps.has(String(row['代碼'])); if (column === tradingViewColumn) { const code = encodeURIComponent(String(row['代碼'] ?? '')); const market = tradingViewMarket(row); return `<td><a class="trading-view-link" target="_blank" rel="noopener" href="https://tw.tradingview.com/chart/?symbol=${market}%3A${code}" aria-label="在 TradingView 開啟 ${escapeHtml(row['代碼'])} ${escapeHtml(row['商品'])} 線圖">開啟線圖</a></td>`; } if (column === '商品') { const code = escapeHtml(row['代碼']); return `<td><a class="${isOverlap ? 'overlap' : ''}" target="_blank" rel="noopener" href="https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco_${code}.djhtm">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</a>${futuresBadge(row['代碼'])}</td>`; } if (column === '代碼') return `<td class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</td>`; const numeric = column === '成交' ? number(row['漲幅%']) : number(raw); const className = (concentration.has(column) || column === '漲幅%' || column === '成交') && numeric !== null ? (numeric > 0 ? 'positive' : numeric < 0 ? 'negative' : '') : ''; return `<td class="${className}">${escapeHtml(displayValue(column, raw))}</td>`; }).join('')}</tr>`).join('');
   root.innerHTML = `${note}<div class="section-heading list-heading"><span>${escapeHtml(strategy.label)} 選股清單</span></div><div class="table-shell selection-table"><table class="stock-table"><thead><tr>${header}</tr></thead><tbody>${body || `<tr><td colspan="${columns.length}">沒有符合搜尋條件的股票。</td></tr>`}</tbody></table></div>${['rs-weighted','main-buy-up'].includes(strategy.id) ? renderGroups(strategy.id, strategy.label, overlaps) : ''}`;
+  if (isIndustry) {
+    root.insertAdjacentHTML('afterbegin', renderIndustryStrength(toRows(payload)));
+    root.querySelectorAll('[data-industry]').forEach(button => button.addEventListener('click', () => {
+      state.industry = button.dataset.industry;
+      renderStrategyContent();
+      root.querySelector('.industry-filter[aria-pressed="true"]')?.focus();
+    }));
+  }
   root.querySelectorAll('[data-sort]').forEach(button => button.addEventListener('click', () => { const column = button.dataset.sort; state.sort = state.sort?.[0] === column ? [column, state.sort[1] * -1] : [column, 1]; renderStrategyContent(); }));
+}
+function industryName(row) {
+  return String(row['細產業'] ?? '').trim() || String(row['產業'] ?? '').trim() || '未分類';
+}
+function renderIndustryStrength(rows) {
+  const groups = new Map();
+  const seen = new Set();
+  for (const row of rows) {
+    const code = String(row['代碼']);
+    if (seen.has(code)) continue;
+    seen.add(code);
+    const name = industryName(row);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(row);
+  }
+  const ranked = Array.from(groups, ([name, stocks]) => {
+    const changes = stocks.map(row => number(row['漲幅%'])).filter(value => value !== null);
+    const rising = changes.filter(value => value > 0).length;
+    const average = changes.length ? changes.reduce((sum, value) => sum + value, 0) / changes.length : null;
+    const strong = name !== '未分類' && stocks.length >= 3 && rising * 2 > stocks.length && average > 0;
+    return { name, stocks, rising, average, strong };
+  }).sort((a, b) => Number(b.strong) - Number(a.strong) || b.stocks.length - a.stocks.length
+    || (b.average ?? -Infinity) - (a.average ?? -Infinity) || a.name.localeCompare(b.name, 'zh-Hant'));
+  const top = ranked.filter(group => group.strong).slice(0, 3);
+  const control = (name, label, css = '') => `<button type="button" class="strategy-tab ${css} ${(state.industry || '') === name ? 'is-active' : ''}" aria-pressed="${(state.industry || '') === name}" data-industry="${escapeHtml(name)}">${label}</button>`;
+  const percent = value => value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+  const cards = top.map(group => control(group.name,
+    `<strong>${escapeHtml(group.name)}</strong><br>${group.stocks.length} 檔入選 · 上漲 ${group.rising}/${group.stocks.length}<br>${percent(group.average)}`)).join('');
+  const body = ranked.map(group => {
+    const color = group.average > 0 ? 'group-change-positive' : group.average < 0 ? 'group-change-negative' : '';
+    const names = group.stocks.map(row => escapeHtml(`${row['代碼']} ${row['商品']}`)).join('、');
+    return `<tr class="${group.average > 0 ? 'group-positive' : ''}"><td>${control(group.name, escapeHtml(group.name), 'industry-filter')}</td><td>${group.stocks.length}</td><td>${group.rising}</td><td class="${color}">${percent(group.average)}</td><td>${group.strong ? '群體走強' : group.stocks.length < 3 ? '樣本較少' : '—'}</td><td>${names}</td></tr>`;
+  }).join('');
+  return `<div class="section-heading"><span>產業強勢股｜強勢族群</span></div>
+    <p class="legend">統計範圍為當日產業強勢股入選名單。群體走強需至少 3 檔入選、過半上漲且平均漲幅為正。</p>
+    ${cards ? `<div class="market-mood">${cards}</div>` : '<p class="empty">當日沒有符合群體走強條件的族群。</p>'}
+    ${control('', '顯示全部', 'industry-filter')}
+    <div class="table-shell selection-table"><table class="group-table"><thead><tr><th>族群</th><th>股票數</th><th>上漲家數</th><th>平均漲幅%</th><th>狀態</th><th>股票清單</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function renderGroups(strategyId, label, overlaps) {
   const groups = new Map();
