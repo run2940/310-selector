@@ -284,7 +284,7 @@ function renderIndustryStrength(rows, overlaps) {
     <p class="legend">統計範圍為當日產業強勢股入選名單。群體走強需至少 3 檔入選、過半上漲且平均漲幅為正。</p>
     ${cards ? `<div class="market-mood">${cards}</div>` : `<p class="empty">${state.search ? '沒有符合搜尋條件的族群。' : '當日沒有符合群體走強條件的族群。'}</p>`}
     ${state.search ? '' : control('', '顯示全部', 'industry-filter')}
-    <div class="table-shell selection-table"><table class="group-table"><thead><tr><th>族群</th><th>股票數</th><th>上漲家數</th><th>平均漲幅%</th><th>狀態</th><th>股票清單</th></tr></thead><tbody>${body}</tbody></table></div>`;
+    <div class="table-shell selection-table"><table class="group-table industry-group-table"><thead><tr><th>族群</th><th>股票數</th><th>上漲家數</th><th>平均漲幅%</th><th>狀態</th><th>股票清單</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function renderGroups(strategyId, label, overlaps) {
   const groups = new Map();

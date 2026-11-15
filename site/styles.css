@@ -41,3 +41,16 @@ main { margin:0 auto; max-width:1480px; padding:1.7rem 5vw 4rem; }.page { displa
 .calculator-card { background:var(--paper); border:1px solid var(--line); border-radius:18px; margin-top:1.2rem; padding:1.25rem; width:100%; }.calculator-inputs { display:grid; gap:1rem; grid-template-columns:repeat(2,minmax(0,1fr)); }.calculator-card input { width:100%; }.retracement-control { align-items:center; display:grid; gap:.65rem; grid-template-columns:1fr 5rem; margin-top:1rem; }.retracement-control label { grid-column:1/-1; }.retracement-control input[type=range] { accent-color:var(--teal); grid-column:1/-1; padding:0; }.calculate-button { background:var(--blue); border:0; border-radius:10px; color:#fff; font-weight:700; margin-top:1rem; min-width:9rem; padding:.65rem 1rem; }.calculate-button:hover,.calculate-button:focus-visible { background:var(--teal); outline:none; }.calculator-message { color:var(--muted); }.stop-result { background:linear-gradient(135deg,#e7f5f5,#d7edf0); border:2px solid #68acb6; border-radius:15px; padding:1rem; text-align:center; }.stop-result span { color:#0c6777; display:block; font-weight:700; }.stop-result strong { color:#0d566d; display:block; font:800 2.5rem Outfit,sans-serif; }.stop-result small { color:var(--muted); }.result-grid { display:grid; gap:.75rem; grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:.75rem; }.result-grid div { background:#f7fafb; border:1px solid var(--line); border-radius:12px; padding:.75rem; }.result-grid strong { color:var(--positive); display:block; font:700 1.35rem Outfit,sans-serif; }.final-profit { color:var(--ink); text-align:center; }.final-profit b { color:var(--positive); }
 #date-select { background:#fbfdfe; border:1px solid #cbd9e2; border-radius:10px; color:var(--ink); min-height:2.65rem; padding:.6rem .7rem; }.date-feedback { color:#a33a3a; display:block; font-size:.78rem; margin-top:.35rem; }
 @media (max-width:720px) { .site-header { padding:0 1rem; }.site-header nav { max-width:70%; overflow-x:auto; }.nav-button { font-size:.85rem; padding-left:.6rem; padding-right:.6rem; }.hero,.trailing-hero { align-items:flex-start; flex-direction:column; padding:1.35rem; }.update-card { text-align:left; }.control-panel { align-items:stretch; flex-direction:column; }.search-item { max-width:none; }.market-mood,.calculator-inputs,.result-grid { grid-template-columns:1fr; }.mood-chart-title { align-items:flex-start; flex-direction:column; gap:.2rem; } main { padding:1.1rem 1rem 3rem; } }
+.industry-group-table :is(th, td):nth-child(3) {
+  min-width: 0;
+  white-space: nowrap;
+}
+.industry-group-table :is(th, td):nth-child(n+2):nth-child(-n+4) {
+  width: 1%;
+  padding-inline: .4rem;
+  text-align: right;
+}
+.industry-group-table :is(th, td):last-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
