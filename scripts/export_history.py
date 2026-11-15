@@ -28,6 +28,7 @@ METADATA_COLUMNS = {"資料日期", "來源檔案", "來源標題", "來源順�
 STRATEGY_LABELS = {
     "RS加權.csv": ("rs-weighted", "RS加權"),
     "主力買向上.csv": ("main-buy-up", "主力買向上"),
+    "產業強勢股.csv": ("industry-strength", "產業強勢股"),
     "天花板地板.csv": ("deviation-rebound", "乖離大反彈"),
     "處置股.csv": ("disposition", "處置股"),
 }
@@ -119,6 +120,11 @@ def export_history(source_db: Path, output_dir: Path, days: int | None = None) -
                     strategies.append({"id": slug, "label": label, "rows": len(strategy_records),
                                        "file": relative_path.as_posix()})
                     file_count += 1
+                industry = next((item for item in strategies if item["id"] == "industry-strength"), None)
+                if industry:
+                    strategies.remove(industry)
+                    position = next((i + 1 for i, item in enumerate(strategies) if item["id"] == "main-buy-up"), len(strategies))
+                    strategies.insert(position, industry)
                 index_dates.append({"date": report_date, "strategies": strategies})
     index_dates.sort(key=lambda item: item["date"], reverse=True)
     snapshot_root = output_dir / "snapshots"
