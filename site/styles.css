@@ -54,3 +54,11 @@ main { margin:0 auto; max-width:1480px; padding:1.7rem 5vw 4rem; }.page { displa
   white-space: normal;
   overflow-wrap: anywhere;
 }
+.industry-stock-list {
+  height: 620px;
+}
+@media (max-width: 720px) {
+  .industry-stock-list {
+    height: min(620px, 65vh);
+  }
+}
