@@ -228,7 +228,9 @@ function renderStrategyContent() {
   const body = rows.map(row => `<tr>${columns.map(column => { const raw = row[column]; const isOverlap = overlaps.has(String(row['代碼'])); if (column === tradingViewColumn) { const code = encodeURIComponent(String(row['代碼'] ?? '')); const market = tradingViewMarket(row); return `<td><a class="trading-view-link" target="_blank" rel="noopener" href="https://tw.tradingview.com/chart/?symbol=${market}%3A${code}" aria-label="在 TradingView 開啟 ${escapeHtml(row['代碼'])} ${escapeHtml(row['商品'])} 線圖">開啟線圖</a></td>`; } if (column === '商品') { const code = escapeHtml(row['代碼']); return `<td><a class="${isOverlap ? 'overlap' : ''}" target="_blank" rel="noopener" href="https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco_${code}.djhtm">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</a>${futuresBadge(row['代碼'])}</td>`; } if (column === '代碼') return `<td class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</td>`; const numeric = column === '成交' ? number(row['漲幅%']) : number(raw); const className = (concentration.has(column) || column === '漲幅%' || column === '成交') && numeric !== null ? (numeric > 0 ? 'positive' : numeric < 0 ? 'negative' : '') : ''; return `<td class="${className}">${escapeHtml(displayValue(column, raw))}</td>`; }).join('')}</tr>`).join('');
   root.innerHTML = `${note}<div class="section-heading list-heading"><span>${escapeHtml(strategy.label)} 選股清單</span></div><div class="table-shell selection-table"><table class="stock-table"><thead><tr>${header}</tr></thead><tbody>${body || `<tr><td colspan="${columns.length}">沒有符合搜尋條件的股票。</td></tr>`}</tbody></table></div>${['rs-weighted','main-buy-up'].includes(strategy.id) ? renderGroups(strategy.id, strategy.label, overlaps) : ''}`;
   if (isIndustry) {
-    root.insertAdjacentHTML('afterbegin', renderIndustryStrength(toRows(payload), overlaps));
+    const { cards, ranking } = renderIndustryStrength(toRows(payload), overlaps);
+    root.insertAdjacentHTML('afterbegin', cards);
+    root.insertAdjacentHTML('beforeend', ranking);
     root.querySelectorAll('[data-industry]').forEach(button => button.addEventListener('click', () => {
       state.industry = button.dataset.industry;
       renderStrategyContent();
@@ -280,11 +282,14 @@ function renderIndustryStrength(rows, overlaps) {
     const names = stockNames(group.stocks, true);
     return `<tr class="${group.average > 0 ? 'group-positive' : ''}"><td>${control(group.name, escapeHtml(group.name), 'industry-filter')}</td><td>${group.stocks.length}</td><td>${group.rising}</td><td class="${color}">${percent(group.average)}</td><td>${group.strong ? '群體走強' : group.stocks.length < 3 ? '樣本較少' : '—'}</td><td>${names}</td></tr>`;
   }).join('');
-  return `<div class="section-heading"><span>產業強勢股｜強勢族群</span></div>
+  return {
+    cards: `<div class="section-heading"><span>產業強勢股｜族群卡片</span></div>
     <p class="legend">統計範圍為當日產業強勢股入選名單。群體走強需至少 3 檔入選、過半上漲且平均漲幅為正。</p>
     ${cards ? `<div class="market-mood">${cards}</div>` : `<p class="empty">${state.search ? '沒有符合搜尋條件的族群。' : '當日沒有符合群體走強條件的族群。'}</p>`}
-    ${state.search ? '' : control('', '顯示全部', 'industry-filter')}
-    <div class="table-shell selection-table"><table class="group-table industry-group-table"><thead><tr><th>族群</th><th>股票數</th><th>上漲家數</th><th>平均漲幅%</th><th>狀態</th><th>股票清單</th></tr></thead><tbody>${body}</tbody></table></div>`;
+    ${state.search ? '' : control('', '顯示全部', 'industry-filter')}`,
+    ranking: `<div class="section-heading"><span>產業強勢股｜強勢族群排行</span></div>
+    <div class="table-shell selection-table"><table class="group-table industry-group-table"><thead><tr><th>族群</th><th>股票數</th><th>上漲家數</th><th>平均漲幅%</th><th>狀態</th><th>股票清單</th></tr></thead><tbody>${body}</tbody></table></div>`,
+  };
 }
 function renderGroups(strategyId, label, overlaps) {
   const groups = new Map();
