@@ -219,7 +219,7 @@ function renderStrategyContent() {
   const strategy = payload.strategy;
   const isIndustry = strategy.id === 'industry-strength';
   let rows = toRows(payload).filter(row => matchRow(row, state.search));
-  if (isIndustry && state.industry) rows = rows.filter(row => industryName(row) === state.industry);
+  if (isIndustry && state.industry && !state.search) rows = rows.filter(row => industryName(row) === state.industry);
   rows = sortRows(rows, strategy.id);
   const columns = visibleColumns(payload, isIndustry ? toRows(payload) : rows);
   const overlaps = overlapCodes();
@@ -259,26 +259,31 @@ function renderIndustryStrength(rows, overlaps) {
     return { name, stocks, rising, average, strong };
   }).sort((a, b) => Number(b.strong) - Number(a.strong) || b.stocks.length - a.stocks.length
     || (b.average ?? -Infinity) - (a.average ?? -Infinity) || a.name.localeCompare(b.name, 'zh-Hant'));
-  const top = ranked.filter(group => group.strong).slice(0, 3);
-  const control = (name, label, css = '') => `<button type="button" class="strategy-tab ${css} ${(state.industry || '') === name ? 'is-active' : ''}" aria-pressed="${(state.industry || '') === name}" data-industry="${escapeHtml(name)}">${label}</button>`;
+  const visible = state.search ? ranked.filter(group => group.stocks.some(row => matchRow(row, state.search))) : ranked;
+  const top = state.search ? visible : ranked.filter(group => group.strong).slice(0, 3);
+  const control = (name, label, css = '') => {
+    if (state.search) return css ? label : `<div class="strategy-tab">${label}</div>`;
+    return `<button type="button" class="strategy-tab ${css} ${(state.industry || '') === name ? 'is-active' : ''}" aria-pressed="${(state.industry || '') === name}" data-industry="${escapeHtml(name)}">${label}</button>`;
+  };
   const percent = value => value === null ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
   const stockNames = (stocks, includeCode = false) => stocks.map(row => {
     const code = row['代碼'];
     const isOverlap = overlaps.has(String(code));
     const label = includeCode ? `${code} ${row['商品']}` : row['商品'];
-    return `<span style="white-space:nowrap"><span class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(label)}</span>${futuresBadge(code)}</span>`;
+    const highlighted = state.search && matchRow(row, state.search);
+    return `<span style="white-space:nowrap${highlighted ? ';background:#fff1b8;color:#243447;font-weight:700' : ''}"><span class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(label)}</span>${futuresBadge(code)}</span>`;
   }).join('、<wbr>');
   const cards = top.map(group => control(group.name,
     `<strong>${escapeHtml(group.name)}</strong><br>${group.stocks.length} 檔入選 · 上漲 ${group.rising}/${group.stocks.length}<br>${percent(group.average)}<br><span style="white-space:normal">${stockNames(group.stocks)}</span>`)).join('');
-  const body = ranked.map(group => {
+  const body = visible.map(group => {
     const color = group.average > 0 ? 'group-change-positive' : group.average < 0 ? 'group-change-negative' : '';
     const names = stockNames(group.stocks, true);
     return `<tr class="${group.average > 0 ? 'group-positive' : ''}"><td>${control(group.name, escapeHtml(group.name), 'industry-filter')}</td><td>${group.stocks.length}</td><td>${group.rising}</td><td class="${color}">${percent(group.average)}</td><td>${group.strong ? '群體走強' : group.stocks.length < 3 ? '樣本較少' : '—'}</td><td>${names}</td></tr>`;
   }).join('');
   return `<div class="section-heading"><span>產業強勢股｜強勢族群</span></div>
     <p class="legend">統計範圍為當日產業強勢股入選名單。群體走強需至少 3 檔入選、過半上漲且平均漲幅為正。</p>
-    ${cards ? `<div class="market-mood">${cards}</div>` : '<p class="empty">當日沒有符合群體走強條件的族群。</p>'}
-    ${control('', '顯示全部', 'industry-filter')}
+    ${cards ? `<div class="market-mood">${cards}</div>` : `<p class="empty">${state.search ? '沒有符合搜尋條件的族群。' : '當日沒有符合群體走強條件的族群。'}</p>`}
+    ${state.search ? '' : control('', '顯示全部', 'industry-filter')}
     <div class="table-shell selection-table"><table class="group-table"><thead><tr><th>族群</th><th>股票數</th><th>上漲家數</th><th>平均漲幅%</th><th>狀態</th><th>股票清單</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function renderGroups(strategyId, label, overlaps) {
@@ -316,8 +321,8 @@ function renderGroups(strategyId, label, overlaps) {
   return `<div class="group-wrap"><div class="section-heading"><span>${escapeHtml(label)}｜${state.date} 強勢族群</span></div><div class="table-shell"><table class="group-table"><thead><tr><th>族群</th><th>股票數</th><th>股票清單</th>${metricHeaders}<th>平均漲幅%</th></tr></thead><tbody>${body || `<tr><td colspan="${columnCount}">此股票不在今日強勢族群名單。</td></tr>`}</tbody></table></div></div>`;
 }
 function refreshCandidates() { const input = qs('#stock-search'); const list = qs('#search-candidates'); const query = input.value.trim().toLowerCase(); if (!query) { list.classList.add('is-hidden'); list.innerHTML = ''; return; } const unique = new Map(); state.daily.forEach(payload => toRows(payload).forEach(row => { const code = String(row['代碼'] ?? ''); const name = String(row['商品'] ?? ''); if (`${code} ${name}`.toLowerCase().includes(query) && !unique.has(code)) unique.set(code, name); })); list.innerHTML = [...unique].map(([code,name]) => `<button type="button" class="candidate-option" data-code="${escapeHtml(code)}"><strong>${escapeHtml(code)}</strong><span>${escapeHtml(name)}</span>${futuresBadge(code)}</button>`).join(''); list.querySelectorAll('.candidate-option').forEach(button => button.addEventListener('click', () => { qs('#stock-search').value = button.dataset.code; state.search = button.dataset.code; list.classList.add('is-hidden'); renderStrategyContent(); })); list.classList.toggle('is-hidden', unique.size === 0); }
-function applySearch() { state.search = qs('#stock-search').value.trim(); qs('#search-candidates').classList.add('is-hidden'); renderStrategyContent(); }
-function clearSearch() { state.search = ''; qs('#stock-search').value = ''; refreshCandidates(); renderStrategyContent(); }
+function applySearch() { state.search = qs('#stock-search').value.trim(); state.industry = ''; qs('#search-candidates').classList.add('is-hidden'); renderStrategyContent(); }
+function clearSearch() { state.search = ''; state.industry = ''; qs('#stock-search').value = ''; refreshCandidates(); renderStrategyContent(); }
 function configureTrailingStop() { const buy = qs('#buy-price'), high = qs('#high-price'), percent = qs('#retracement-number'), range = qs('#retracement-range'); const result = qs('#trailing-results'), message = qs('#trailing-message'); const updateStep = input => { const value = Number(input.value); input.step = value < 10 ? .01 : value < 50 ? .05 : value < 100 ? .1 : value < 500 ? .5 : value < 1000 ? 1 : 5; }; const calculate = () => { updateStep(buy); updateStep(high); const cost=Number(buy.value), top=Number(high.value), ratio=Math.max(0,Math.min(100,Number(percent.value)||0))/100; if (!cost || !top) { result.classList.add('is-hidden'); message.textContent='請先輸入買入股價與目前最高點。'; return; } if (top <= cost) { result.classList.add('is-hidden'); message.textContent='目前最高價尚未超過買入價，尚無獲利可計算停利。'; return; } const max=top-cost, giveBack=max*ratio, stop=top-giveBack; qs('#stop-price').textContent=stop.toFixed(2); qs('#max-profit').textContent=max.toFixed(2); qs('#retracement-amount').textContent=giveBack.toFixed(2); qs('#final-profit').textContent=(stop-cost).toFixed(2); message.textContent=`目前設定：最多容許回吐最高帳面獲利的 ${Math.round(ratio*100)}%。`; result.classList.remove('is-hidden'); }; const recalculate = () => { percent.value=Math.max(0,Math.min(100,percent.value)); range.value=percent.value; calculate(); }; percent.addEventListener('input', recalculate); range.addEventListener('input', () => { percent.value=range.value; calculate(); }); [buy,high].forEach(input => input.addEventListener('input', calculate)); }
 function configureNavigation() { document.querySelectorAll('.nav-button').forEach(button => button.addEventListener('click', () => { const page=button.dataset.page; document.querySelectorAll('.nav-button').forEach(item => item.classList.toggle('is-active', item === button)); document.querySelectorAll('.page').forEach(item => item.classList.toggle('is-active', item.id === `${page}-page`)); })); }
 async function init() { configureNavigation(); configureTrailingStop(); qs('#stock-search').addEventListener('input', refreshCandidates); qs('#stock-search').addEventListener('keydown', event => { if (event.key === 'Enter') applySearch(); }); qs('#search-apply').addEventListener('click', applySearch); qs('#search-clear').addEventListener('click', clearSearch); try { await loadFutures(); await loadIndex(); } catch (error) { qs('#load-error').textContent = `${error.message} 請用本機網站伺服器或 GitHub Pages 開啟，不要直接雙擊 index.html。`; qs('#load-error').classList.remove('is-hidden'); } }
