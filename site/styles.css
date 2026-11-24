@@ -62,3 +62,7 @@ main { margin:0 auto; max-width:1480px; padding:1.7rem 5vw 4rem; }.page { displa
     height: min(620px, 65vh);
   }
 }
+
+.stock-table tr[data-code] { cursor: pointer; }
+.stock-table tr.is-selected td { background: #e7eff6; }
+.deviation-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 .7rem; }

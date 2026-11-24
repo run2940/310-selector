@@ -1,4 +1,4 @@
-const state = { index: null, daily: new Map(), futures: new Set(), date: null, strategy: null, search: '', sort: null, industry: '' };
+const state = { index: null, daily: new Map(), futures: new Set(), date: null, strategy: null, search: '', sort: null, industry: '', selectedCodes: new Map(), deviation: 'all' };
 const labels = {
   '序號':'序號','代碼':'代碼','商品':'商品','成交':'成交','漲幅%':'漲幅%','總量':'總量',
   '歐奈爾RS評分(1-99)':'RS評分','5日籌碼集中度(%)':'主5','10日籌碼集中度(%)':'主10','20日籌碼集中度(%)':'主20',
@@ -61,7 +61,7 @@ function toRows(payload) { return payload.rows.map(values => Object.fromEntries(
 function number(value) { if (value === null || value === undefined || value === '') return null; const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; }
 function displayValue(column, value) { const numeric = number(value); if (numeric === null) return value ?? ''; if (integerColumns.has(column)) return numeric.toFixed(0); if (column === '實際量增倍數') return numeric.toFixed(1); return numeric.toFixed(2); }
 function visibleColumns(payload, rows) {
-  const available = new Set([...payload.columns, tradingViewColumn]); const selected = baseColumns.filter(column => available.has(column));
+  const available = new Set(['序號', ...payload.columns, tradingViewColumn]); const selected = baseColumns.filter(column => available.has(column));
   orderedColumnGroups.forEach(group => { const column = group.find(item => available.has(item) && (item === tradingViewColumn || rows.some(row => row[item] !== null && row[item] !== undefined && row[item] !== ''))); if (column) selected.push(column); });
   const aliasColumns = new Set(orderedColumnGroups.flat());
   const excluded = new Set(['資料日期','來源檔案','來源標題','來源順位','匯入時間', ...industryColumns, ...aliasColumns, ...hiddenColumns]);
@@ -109,6 +109,7 @@ function renderUnavailableDate(date) {
   refreshCandidates();
 }
 async function loadDate() {
+  state.selectedCodes.clear();
   state.industry = '';
   const day = activeDay(); if (!day) return; state.daily.clear();
   await Promise.all(day.strategies.map(async strategy => { const response = await fetch(`data/${strategy.file}`, { cache: 'no-store' }); if (!response.ok) throw new Error(`無法讀取 ${strategy.label} 資料。`); state.daily.set(strategy.id, await response.json()); }));
@@ -220,13 +221,27 @@ function renderStrategyContent() {
   const isIndustry = strategy.id === 'industry-strength';
   let rows = toRows(payload).filter(row => matchRow(row, state.search));
   if (isIndustry && state.industry && !state.search) rows = rows.filter(row => industryName(row) === state.industry);
+  const isDeviation = strategy.id === 'deviation-rebound';
+  if (isDeviation && state.deviation !== 'all') {
+    rows = rows.filter(row => {
+      const deviation = number(row['20日乖離率(%)']);
+      return state.deviation === 'positive' ? deviation > 0 : deviation < 0;
+    });
+  }
   rows = sortRows(rows, strategy.id);
+  const selectedCode = state.selectedCodes.get(strategy.id);
+  const deviationControls = isDeviation ? `<div class="deviation-filter" role="group" aria-label="乖離篩選">${[
+    ['all', '全部'], ['positive', '正乖離'], ['negative', '負乖離'],
+  ].map(([value, label]) => `<button type="button" class="strategy-tab ${state.deviation === value ? 'is-active' : ''}" data-deviation="${value}" aria-pressed="${state.deviation === value}">${label}</button>`).join('')}</div>` : '';
   const columns = visibleColumns(payload, isIndustry ? toRows(payload) : rows);
   const overlaps = overlapCodes();
   const note = strategy.id === 'deviation-rebound' ? '<details class="strategy-note"><summary>搶反彈經驗</summary><ol><li>按照負乖離排序。</li><li>將資金分成 10 等份。</li><li>當天晚上出現小於地板或接近地板個股時，列入自選。</li><li>第二天殺低爆量時搶反彈，買黑不買紅。</li><li>第三天開高上漲無力時獲利了結。</li><li>若第三天殺低爆量，第二份資金再搶一次。</li></ol></details>' : strategy.id === 'disposition' ? '<p class="strategy-note">月線斜率大於 1、布林位階小於 4，搭配距高點回檔幅度與盤勢經驗，尋找做多機會。</p>' : '';
-  const header = columns.map(column => column === tradingViewColumn ? `<th>${tradingViewColumn}</th>` : `<th><button data-sort="${escapeHtml(column)}">${escapeHtml(labels[column] || column)}${state.sort?.[0] === column ? (state.sort[1] === 1 ? ' ↑' : ' ↓') : ''}</button></th>`).join('');
-  const body = rows.map(row => `<tr>${columns.map(column => { const raw = row[column]; const isOverlap = overlaps.has(String(row['代碼'])); if (column === tradingViewColumn) { const code = encodeURIComponent(String(row['代碼'] ?? '')); const market = tradingViewMarket(row); return `<td><a class="trading-view-link" target="_blank" rel="noopener" href="https://tw.tradingview.com/chart/?symbol=${market}%3A${code}" aria-label="在 TradingView 開啟 ${escapeHtml(row['代碼'])} ${escapeHtml(row['商品'])} 線圖">開啟線圖</a></td>`; } if (column === '商品') { const code = escapeHtml(row['代碼']); return `<td><a class="${isOverlap ? 'overlap' : ''}" target="_blank" rel="noopener" href="https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco_${code}.djhtm">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</a>${futuresBadge(row['代碼'])}</td>`; } if (column === '代碼') return `<td class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</td>`; const numeric = column === '成交' ? number(row['漲幅%']) : number(raw); const className = (concentration.has(column) || column === '漲幅%' || column === '成交') && numeric !== null ? (numeric > 0 ? 'positive' : numeric < 0 ? 'negative' : '') : ''; return `<td class="${className}">${escapeHtml(displayValue(column, raw))}</td>`; }).join('')}</tr>`).join('');
-  root.innerHTML = `${note}<div class="section-heading list-heading"><span>${escapeHtml(strategy.label)} 選股清單</span></div><div class="table-shell selection-table"><table class="stock-table"><thead><tr>${header}</tr></thead><tbody>${body || `<tr><td colspan="${columns.length}">沒有符合搜尋條件的股票。</td></tr>`}</tbody></table></div>${['rs-weighted','main-buy-up'].includes(strategy.id) ? renderGroups(strategy.id, strategy.label, overlaps) : ''}`;
+  const header = columns.map(column => ['序號', tradingViewColumn].includes(column) ? `<th>${escapeHtml(column)}</th>` : `<th><button data-sort="${escapeHtml(column)}">${escapeHtml(labels[column] || column)}${state.sort?.[0] === column ? (state.sort[1] === 1 ? ' ↑' : ' ↓') : ''}</button></th>`).join('');
+  const body = rows.map((row, index) => {
+    const code = String(row['代碼'] ?? '');
+    return `<tr tabindex="0" data-code="${escapeHtml(code)}" class="${code === selectedCode ? 'is-selected' : ''}">${columns.map(column => { if (column === '序號') return `<td>${index + 1}</td>`; const raw = row[column]; const isOverlap = overlaps.has(String(row['代碼'])); if (column === tradingViewColumn) { const code = encodeURIComponent(String(row['代碼'] ?? '')); const market = tradingViewMarket(row); return `<td><a class="trading-view-link" target="_blank" rel="noopener" href="https://tw.tradingview.com/chart/?symbol=${market}%3A${code}" aria-label="在 TradingView 開啟 ${escapeHtml(row['代碼'])} ${escapeHtml(row['商品'])} 線圖">開啟線圖</a></td>`; } if (column === '商品') { const code = escapeHtml(row['代碼']); return `<td><a class="${isOverlap ? 'overlap' : ''}" target="_blank" rel="noopener" href="https://fubon-ebrokerdj.fbs.com.tw/z/zc/zco/zco_${code}.djhtm">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</a>${futuresBadge(row['代碼'])}</td>`; } if (column === '代碼') return `<td class="${isOverlap ? 'overlap' : ''}">${isOverlap ? '◆ ' : ''}${escapeHtml(raw)}</td>`; const numeric = column === '成交' ? number(row['漲幅%']) : number(raw); const className = (concentration.has(column) || column === '漲幅%' || column === '成交') && numeric !== null ? (numeric > 0 ? 'positive' : numeric < 0 ? 'negative' : '') : ''; return `<td class="${className}">${escapeHtml(displayValue(column, raw))}</td>`; }).join('')}</tr>`;
+  }).join('');
+  root.innerHTML = `${note}<div class="section-heading list-heading"><span>${escapeHtml(strategy.label)} 選股清單</span></div>${deviationControls}<div class="table-shell selection-table"><table class="stock-table"><thead><tr>${header}</tr></thead><tbody>${body || `<tr><td colspan="${columns.length}">沒有符合條件的股票。</td></tr>`}</tbody></table></div>${['rs-weighted','main-buy-up'].includes(strategy.id) ? renderGroups(strategy.id, strategy.label, overlaps) : ''}`;
   if (isIndustry) {
     root.querySelector('.selection-table').classList.add('industry-stock-list');
     const { cards, ranking } = renderIndustryStrength(toRows(payload), overlaps);
@@ -238,6 +253,25 @@ function renderStrategyContent() {
       root.querySelector('.industry-filter[aria-pressed="true"]')?.focus();
     }));
   }
+  root.querySelectorAll('[data-deviation]').forEach(button => button.addEventListener('click', () => {
+    state.deviation = button.dataset.deviation;
+    renderStrategyContent();
+    root.querySelector('[data-deviation][aria-pressed="true"]')?.focus();
+  }));
+  const stockRows = root.querySelectorAll('.stock-table tr[data-code]');
+  stockRows.forEach(row => {
+    const select = () => {
+      state.selectedCodes.set(strategy.id, row.dataset.code);
+      stockRows.forEach(item => item.classList.toggle('is-selected', item === row));
+    };
+    row.addEventListener('click', select);
+    row.addEventListener('keydown', event => {
+      if (event.target === row && ['Enter', ' '].includes(event.key)) {
+        event.preventDefault();
+        select();
+      }
+    });
+  });
   root.querySelectorAll('[data-sort]').forEach(button => button.addEventListener('click', () => { const column = button.dataset.sort; state.sort = state.sort?.[0] === column ? [column, state.sort[1] * -1] : [column, 1]; renderStrategyContent(); }));
 }
 function industryName(row) {
